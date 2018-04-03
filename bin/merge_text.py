@@ -48,9 +48,9 @@ def parallelize(func, iterator, n_jobs, extra):
 
 
 def iter_comments(loc):
-    with bz2.BZ2File(loc) as file_:
-        for i, line in enumerate(file_):
-            yield ujson.loads(line)['body']
+    with open(loc) as file:
+        for i, line in enumerate(file):
+            yield line
 
 
 pre_format_re = re.compile(r'^[\`\*\~]')
@@ -88,13 +88,15 @@ def parse_and_transform(batch_id, input_, out_dir):
     nlp.matcher = None
     with io.open(out_loc, 'w', encoding='utf8') as file_:
         for text in input_:
-            file_.write(transform_doc(nlp(strip_meta(text))))
+            if text.strip():
+                file_.write(transform_doc(nlp(strip_meta(text))))
 
 
 def transform_doc(doc):
     for ent in doc.ents:
         ent.merge(ent.root.tag_, ent.text, LABELS[ent.label_])
-    for np in doc.noun_chunks:
+    np_chunks = list(doc.noun_chunks)
+    for np in np_chunks:
         while len(np) > 1 and np[0].dep_ not in ('advmod', 'amod', 'compound'):
             np = np[1:]
         np.merge(np.root.tag_, np.text, np.root.ent_type_)
@@ -118,23 +120,28 @@ def represent_word(word):
     return text + '|' + tag
 
 
-@plac.annotations(
-    in_loc=("Location of input file"),
-    out_dir=("Location of input file"),
-    n_workers=("Number of workers", "option", "n", int),
-    load_parses=("Load parses from binary", "flag", "b"),
-)
-def main(in_loc, out_dir, n_workers=4, load_parses=False):
+# @plac.annotations(
+#     in_loc=("Location of input dir"),
+#     out_dir=("Location of input file"),
+#     n_workers=("Number of workers", "option", "n", int),
+#     load_parses=("Load parses from binary", "flag", "b"),
+# )
+def main():
+    in_loc ='/Users/william/data/engineering_jd/part-r-00209-eaf5b4cc-c8bb-45c0-8df2-a0720ac559ee.csv'
+    out_dir="/Users/william/projects/sense2vec/data/"
+    n_workers=4
+    load_parses=False
+
     if not path.exists(out_dir):
         path.join(out_dir)
     if load_parses:
         jobs = [path.join(in_loc, fn) for fn in os.listdir(in_loc)]
         do_work = load_and_transform
     else:
-        jobs = partition(200000, iter_comments(in_loc))
+        jobs = partition(100, iter_comments(in_loc)) #200000
         do_work = parse_and_transform
     parallelize(do_work, enumerate(jobs), n_workers, [out_dir])
  
 
 if __name__ == '__main__':
-    plac.call(main)
+    main()
